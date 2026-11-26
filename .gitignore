@@ -1,0 +1,7 @@
+/worktrees/
+/TODOS.md
+/build/
+/screenshots/
+.DS_Store
+sketchybar/plugins/appearance
+sketchybar/plugins/bt_battery

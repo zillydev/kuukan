@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+# ===== Scripting Addition =====
+yabai -m signal --add event=dock_did_restart action="sudo yabai --load-sa"
+sudo yabai --load-sa
+
+# Space policy lives in spacesd; no yabai space signals are needed.
+
+# ===== Configuration =====
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+DEFAULT_CFG="$SCRIPT_DIR/../config.default.json"
+[[ -f "$DEFAULT_CFG" ]] || DEFAULT_CFG="$HOME/.config/kuukan/config.default.json"
+USER_CFG="${KUUKAN_CONFIG:-$HOME/.config/kuukan/config.json}"
+
+if [[ -f "$USER_CFG" && -f "$DEFAULT_CFG" ]]; then
+  CFG="$(jq -s '.[0] * .[1]' "$DEFAULT_CFG" "$USER_CFG")"
+elif [[ -f "$DEFAULT_CFG" ]]; then
+  CFG="$(cat "$DEFAULT_CFG")"
+elif [[ -f "$USER_CFG" ]]; then
+  CFG="$(cat "$USER_CFG")"
+else
+  CFG='{}'
+fi
+
+{
+  IFS= read -r BAR_HEIGHT
+  IFS= read -r LAYOUT
+  IFS= read -r PADDING
+  IFS= read -r GAP
+  IFS= read -r MOUSE_MOD
+} < <(jq -r '
+  ((.bar.height // 39) | tostring),
+  (.window_manager.layout // "float"),
+  ((.window_manager.padding // 10) | tostring),
+  ((.window_manager.window_gap // 10) | tostring),
+  (.window_manager.mouse_modifier // "alt")
+' <<<"$CFG")
+
+# ===== Layout =====
+yabai -m config layout "$LAYOUT"
+yabai -m config window_placement second_child
+
+# ===== Padding and gaps =====
+yabai -m config external_bar "all:${BAR_HEIGHT}:0"
+yabai -m config top_padding    "$PADDING"
+yabai -m config bottom_padding "$PADDING"
+yabai -m config left_padding   "$PADDING"
+yabai -m config right_padding  "$PADDING"
+yabai -m config window_gap     "$GAP"
+
+# ===== Mouse =====
+yabai -m config mouse_follows_focus off
+yabai -m config focus_follows_mouse off
+yabai -m config mouse_modifier "$MOUSE_MOD"
+yabai -m config mouse_action1 move
+yabai -m config mouse_action2 resize
+yabai -m config mouse_drop_action swap
+
+# ===== Window modifications =====
+yabai -m config split_ratio 0.50
+yabai -m config auto_balance off
+
+# ===== Pinned apps on space 1 =====
+while IFS= read -r rule; do
+  [[ -n "$rule" ]] && yabai -m rule --add app="$rule" space=1
+done < <(jq -r '.pinned_apps // [] | .[] | (.yabai_rule // (if (.app // "") != "" then "^" + .app + "$" else empty end))' <<<"$CFG")
+
+# ===== Float apps that do not tile well =====
+while IFS= read -r rule; do
+  [[ -n "$rule" ]] && yabai -m rule --add app="$rule" manage=off
+done < <(jq -r '.window_manager.float_apps // [] | .[]' <<<"$CFG")
+yabai -m rule --add app="^Finder$" title="^(Copy|Connect|Move|Info|Pref)" manage=off

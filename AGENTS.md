@@ -1,0 +1,44 @@
+# kuukan (desktop config and spacesd)
+
+The desktop environment: `sketchybar/` (bar config and plugins), `yabai/` (yabairc, helpers), `skhd/` (default hotkeys), `config.default.json` (single config schema overlaid by `~/.config/kuukan/config.json`) and `spacesd/`, the C daemon that owns all space policy (rendering the space items, names, mirroring, focus and app actions; its design is `docs/specs/2026-08-30-spacesd-design.md`). Change space behaviour in `spacesd/`, not in shell scripts or `sketchybarrc`.
+
+The live desktop runs this repo's **main checkout**: `~/.config/sketchybar`, `~/.config/yabai`, `~/.config/kuukan/spacesd`, and `~/.config/kuukan/config.default.json` are symlinks to it (`make install` recreates them and renders `~/.config/kuukan/skhdrc` and the LaunchAgent plist), and launchd's `dev.zilly.spacesd` runs `spacesd/bin/spacesd` from it. So building spacesd in the main checkout is deploying it: its makefile refuses to build that binary without `DEPLOY=1`, which only `scripts/live.sh` passes. Changing what the live desktop runs (`make try`, `make back`, `make deploy`, below) is the user's call: never run those yourself.
+
+## Commands
+
+- `make build`: the compiled plugin helpers (`appearance`, `bt_battery`) and the VM input tool (`build/guestinput`). Rebuilt only when the source is newer; `bt_battery` holds a Bluetooth TCC grant, so don't force-rebuild it in the main checkout without reason.
+- `make lint`: `proj check` plus `bash -n` (and shellcheck when installed) on every script. `make test`: lint, build, and `make -C spacesd test`: a compile of every daemon source with warnings as errors (`check`, which writes no binary) and the unit tests (`bin/test`).
+- spacesd itself: `make -C spacesd bin/spacesd` in a worktree; it signs with the `spacesd-selfsign` keychain cert so the Accessibility grant survives rebuilds (`spacesd/scripts/setup-codesign.sh` recreates the cert).
+- `make try BRANCH=<branch>` / `make back` / `make deploy` (`scripts/live.sh`), for the user to run: check a branch out in the main checkout (detached, since the branch itself is held by its worktree), return to `main`, or apply `main` after a merge. Each applies only what changed since the last one: `make build` for a helper, a spacesd rebuild and `kickstart` (a `bootout`/`bootstrap` when the plist changed), `yabai --restart-service` for yabairc, `skhd --reload` for skhdrc (skhd's own file watch does not see a change through the symlinked `~/.config/skhd`), `sketchybar --reload`. `LIVE_DRY=1` prints the steps instead; `scripts/live_test.sh`, part of `make test`, covers them on a throwaway repo.
+- `make dev-guided`, for the user to run: this checkout's agent VM in a window on their screen (guided mode, below).
+- `make agent` / `make stop`: this checkout's hidden agent copy (below). `make proofs` (`scripts/prove [name…]`): replay `scripts/proofs/*.sh` against it. Each proof starts from restarted services, two spaces and no windows; it fails on its own exit code or on a service that is not running afterwards, and prints its snap and, for a failure, a log that ends with the services' logs.
+- `make golden`: (re)provision the `wm-golden` VM every agent copy is cloned from. The image is shared by every checkout and records which `scripts/vm/provision-golden.sh` made it; `start` warns when that is not this checkout's, and refuses to clone while the image is booted for provisioning. Setup from scratch: `docs/agent-vm.md`.
+
+## The hidden agent copy
+
+A headless tart macOS 27 VM per checkout (`wm-<hash>`, state in `/tmp/devkit-kuukan<hash>/`), cloned from `wm-golden` with SIP off so yabai's scripting addition loads. It runs this checkout's three configs and this checkout's spacesd (built for the VM in a worktree, taken as is in the main checkout) with the host's own yabai/sketchybar/skhd binaries. No window (except in guided mode, when the user opens one) and no VNC, and the host cannot reach the guest over the network, so commands go through a shared-folder mailbox. Nothing in it touches the host's bar, pointer, keyboard or windows. The guest does have outbound internet (tart's NAT), so nothing in it may sign in to a real account.
+
+- `scripts/agent-app.sh start [--wait S]|sync|restart|stop|status|logs [svc] [n]|paths|clean`. `sync` re-stages the checkout and restarts the services in about 3 s: the edit loop. `status` also lists every running VM with its checkout and idle time.
+- `scripts/ui snap [--bar] [name]` (prints the PNG path; look at it; `--bar` keeps the bar and the popups under it, which stays legible), `key alt+1`, `click X Y`, `bar-click ITEM` (the middle of a bar item), `bar --query ITEM`, `yabai query --spaces`, `spacesd status`, `run CMD`, `logs [svc] [n]`, and `until [--timeout S] CMD`, which waits for a guest command to succeed. A proof waits with `until`, never `sleep` (`proj check` enforces it).
+- The `explore-app` skill's kit vocabulary maps here as: `scripts/ui logs` works; there is no `scripts/seed` (the fixture checklists are the only seeded state) and no `ui resize` (the guest's display is fixed).
+- Fixture todo lists come from `fixtures/obsidian/`; the user's real Obsidian notes never enter the VM.
+- At most two macOS VMs run at once (Apple's limit) and each takes 4 GB: two worktrees can test in parallel. With both slots taken, `start` names the holders and how long each has been idle, and `start --wait S` waits for a slot; another session's VM is not yours to stop. Stop yours when done (`make stop`, `proj ps`); one nobody has driven for 30 minutes stops itself (`AGENT_IDLE_MIN`, 0 to keep it).
+- A guest command that outlives its timeout is ended in the guest with its children and returns 124, and the next command still gets its answer.
+- Out of its reach: the name dialogs of alt+n and alt+r (they need an Automation grant; `scripts/ui spacesd create NAME` and `rename NAME` are what they run), a second display (spacesd mirroring, connect/disconnect), the notch (`q`/`e` items sit centre), trackpad gestures, Bluetooth and battery hardware, `media-control` (a host Homebrew script) and the theme switcher (it runs the user's "Toggle Appearance" Shortcut). Those need the user's own Mac, in the final check.
+
+## Definition of done
+
+1. `make test`.
+2. `scripts/agent-app.sh start` (or `sync`), exercise the change through `scripts/ui` the way the user would (hotkeys via `key`, clicks via `click`), look at the snaps, read `scripts/agent-app.sh logs`. Save the walk as a proof in `scripts/proofs/` when it covers a user-facing behaviour, name it in the feature's `Proof:` line in `FEATURES.md`, and run `make proofs`.
+3. Report what you exercised with the snap paths, and what the VM cannot show (see above).
+4. Hand-off, guided: the user tries the branch in this checkout's agent VM, shown in a window, without switching their desktop. Give them the one command, `make -C <repo>/worktrees/<branch> dev-guided` (never run it yourself: `start --window` turns an agent's shell away), then one step per message ("press alt+2; the highlight should move to 2"), reading `scripts/ui snap`, `scripts/ui spacesd status` and the logs between steps. While the window has focus their keys go to the guest, since `skhd/skhdrc` blacklists `tart` for the host's skhd. `make -C <same path> stop` closes it; a VM with a window is never stopped for being idle.
+5. Hand-off, live: for what the VM cannot show (see above), or when they ask to run the branch on their own desktop. That switches what they are looking at, so only when they ask: give them `make -C <repo> try BRANCH=<branch>`, say what it will restart (`LIVE_DRY=1 scripts/live.sh try <branch>` in the worktree lists it), and the way back, `make -C <repo> back`.
+6. After the user says "merge": the main checkout must be on `main` (`make back` first if they are still trying a branch), then squash-merge and give them `make -C <repo> deploy`, which brings the desktop up to the merge. Until it runs, the configs are new and the daemon is old.
+
+## Docs
+
+`docs/specs/<date>-<name>-design.md` holds design specs, kept to the code's current state (a change that alters what a spec describes updates it in the same branch); a draft spec for a `(needs design)` item lives there too, named by its `TODOS.md` entry. `docs/agent-vm.md` is the VM how-to. `FEATURES.md` and `CHANGELOG.md` follow the repo's conventions.
+
+## Working in parallel
+
+One branch per `TODOS.md` item, in a worktree under `worktrees/<branch>` (`EnterWorktree`, or `git worktree add worktrees/<branch> -b <branch> main`). Each worktree gets its own agent VM. Never edit files in the main checkout for a feature: the live desktop runs them. `live_main = true` in `checks.toml` makes the guard hook block Edit and Write there (ignored files and a merge's conflicts pass) and the pre-commit check refuse a commit that is not a squash merge.

@@ -1,0 +1,550 @@
+#!/usr/bin/env bash
+
+# ===== Configuration =====
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+DEFAULT_CFG="$SCRIPT_DIR/../config.default.json"
+[[ -f "$DEFAULT_CFG" ]] || DEFAULT_CFG="$HOME/.config/kuukan/config.default.json"
+USER_CFG="${KUUKAN_CONFIG:-$HOME/.config/kuukan/config.json}"
+
+if [[ -f "$USER_CFG" && -f "$DEFAULT_CFG" ]]; then
+  CFG="$(jq -s '.[0] * .[1]' "$DEFAULT_CFG" "$USER_CFG")"
+elif [[ -f "$DEFAULT_CFG" ]]; then
+  CFG="$(cat "$DEFAULT_CFG")"
+elif [[ -f "$USER_CFG" ]]; then
+  CFG="$(cat "$USER_CFG")"
+else
+  CFG='{}'
+fi
+
+{
+  IFS= read -r FONT
+  IFS= read -r BAR_HEIGHT
+  IFS= read -r NOTCH_WIDTH
+  IFS= read -r SURFACE0
+  IFS= read -r SURFACE1
+  IFS= read -r TEXT
+  IFS= read -r SUBTEXT
+  IFS= read -r MAUVE
+  IFS= read -r RED
+  IFS= read -r PEACH
+  IFS= read -r GREEN
+  IFS= read -r BLUE
+  IFS= read -r YELLOW
+  IFS= read -r W_CLOCK
+  IFS= read -r W_BATTERY
+  IFS= read -r W_VOLUME
+  IFS= read -r W_CPU_RAM
+  IFS= read -r W_THEME
+  IFS= read -r THEME_SHORTCUT
+  IFS= read -r W_MEDIA
+  IFS= read -r MEDIA_APP
+  IFS= read -r W_LOCK
+} < <(jq -r '
+  (.bar.font // "JetBrainsMono Nerd Font"),
+  ((.bar.height // 39) | tostring),
+  ((.bar.notch_width // 200) | tostring),
+  (.bar.colors.surface0 // "0xff313244"),
+  (.bar.colors.surface1 // "0xff45475a"),
+  (.bar.colors.text // "0xffcdd6f4"),
+  (.bar.colors.subtext // "0xffa6adc8"),
+  (.bar.colors.mauve // "0xffcba6f7"),
+  (.bar.colors.red // "0xfff38ba8"),
+  (.bar.colors.peach // "0xfffab387"),
+  (.bar.colors.green // "0xffa6e3a1"),
+  (.bar.colors.blue // "0xff89b4fa"),
+  (.bar.colors.yellow // "0xfff9e2af"),
+  ((if .widgets.clock.enabled == false then false else true end) | tostring),
+  ((if .widgets.battery.enabled == false then false else true end) | tostring),
+  ((if .widgets.volume.enabled == false then false else true end) | tostring),
+  ((if .widgets.cpu_ram.enabled == false then false else true end) | tostring),
+  ((if .widgets.theme.enabled == false then false else true end) | tostring),
+  (.widgets.theme.shortcut // "Toggle Appearance"),
+  ((if .widgets.media.enabled == false then false else true end) | tostring),
+  (.widgets.media.app // "YouTube Music"),
+  ((if .widgets.lock_animation.enabled == false then false else true end) | tostring)
+' <<<"$CFG")
+
+TRANSPARENT=0x00000000
+PLUGIN_DIR="$HOME/.config/sketchybar/plugins"
+SPACESD="${SPACESD:-$HOME/.config/kuukan/spacesd/bin/spacesd}"
+[[ -x "$SPACESD" ]] || SPACESD="$SCRIPT_DIR/../spacesd/bin/spacesd"
+
+# Collect popup item names dynamically so opening any popup closes the rest.
+STATUS_POPUP_ANCHOR=""
+if [[ "$W_BATTERY" == "true" ]]; then
+  STATUS_POPUP_ANCHOR="battery"
+elif [[ "$W_VOLUME" == "true" ]]; then
+  STATUS_POPUP_ANCHOR="volume"
+fi
+
+POPUP_ITEMS=()
+[[ "$W_CLOCK" == "true" ]] && POPUP_ITEMS+=(clock)
+[[ -n "$STATUS_POPUP_ANCHOR" ]] && POPUP_ITEMS+=("$STATUS_POPUP_ANCHOR")
+[[ "$W_MEDIA" == "true" ]] && POPUP_ITEMS+=(media.anchor)
+
+TODO_IDS=()
+TODO_ICONS=()
+TODO_FILES=()
+while IFS=$'\t' read -r tid ticon tfile; do
+  [[ -n "$tid" && -n "$tfile" ]] || continue
+  TODO_IDS+=("$tid")
+  TODO_ICONS+=("$ticon")
+  TODO_FILES+=("${tfile/#\~/$HOME}")
+  POPUP_ITEMS+=("$tid")
+done < <(jq -r '.widgets.todos // [] | .[] | [(.id // ""), (.icon // "󰄱"), (.file // "")] | @tsv' <<<"$CFG")
+
+close_popups_except() {
+  local keep="$1" cmd="sketchybar" item
+  for item in "${POPUP_ITEMS[@]}"; do
+    [[ "$item" != "$keep" ]] && cmd="$cmd --set $item popup.drawing=off"
+  done
+  printf '%s' "$cmd"
+}
+
+# ===== Bar & defaults =====
+sketchybar --bar position=top height="$BAR_HEIGHT" color="$TRANSPARENT" \
+                 padding_left=10 padding_right=10 \
+                 notch_width="$NOTCH_WIDTH" sticky=on topmost=window \
+           --default label.font="$FONT:Bold:12.0" \
+                     label.color="$TEXT" \
+                     icon.font="$FONT:Medium:15.0" \
+                     icon.color="$TEXT" \
+                     background.color="$SURFACE0" \
+                     background.corner_radius=5 \
+                     background.height=26 \
+                     background.padding_left=0 \
+                     background.padding_right=0
+
+# ===== General spaces (left) =====
+# Visual state is pushed by spacesd; explicit script="" suppresses sketchybar's default highlight script.
+space_args=()
+for i in $(seq 2 22); do
+  space_args+=(--add space "space.$i" left
+               --set "space.$i" "associated_space=$i"
+                                "icon=$i"
+                                "icon.font=$FONT:Bold:14.0"
+                                icon.padding_left=8
+                                icon.padding_right=8
+                                "icon.color=$SUBTEXT"
+                                background.drawing=off
+                                background.padding_left=2
+                                background.padding_right=2
+                                script=""
+                                update_freq=0
+                                "click_script=$SPACESD -m focus $i")
+done
+sketchybar "${space_args[@]}"
+
+# ===== Right side items =====
+if [[ "$W_CLOCK" == "true" ]]; then
+  sketchybar --add item clock right \
+             --set clock update_freq=30 \
+                        icon="󰃰" \
+                        icon.color="$RED" \
+                        icon.padding_left=8 \
+                        icon.padding_right=4 \
+                        label.padding_right=8 \
+                        background.drawing=on \
+                        background.padding_right=16 \
+                        click_script="$(close_popups_except clock) --set clock popup.drawing=toggle" \
+                        popup.align=right \
+                        popup.background.color="$SURFACE0" \
+                        popup.background.corner_radius=10 \
+                        popup.background.border_color="$SURFACE1" \
+                        popup.background.border_width=1 \
+                        script="$PLUGIN_DIR/clock.sh" \
+             --subscribe clock mouse.exited.global
+
+  cal_args=()
+  for i in 0 1 2 3 4 5 6 7; do
+    cal_args+=(--add item "cal.$i" popup.clock
+               --set "cal.$i" icon.drawing=off
+                              "label.font=$FONT:Medium:12.0"
+                              "label.color=$TEXT"
+                              label.padding_left=10
+                              label.padding_right=10
+                              label=""
+                              background.drawing=off)
+  done
+  cal_args+=(--set cal.0 "label.font=$FONT:Bold:13.0" "label.color=$RED")
+  sketchybar "${cal_args[@]}"
+fi
+
+if [[ -n "$STATUS_POPUP_ANCHOR" ]]; then
+  status_click="$(close_popups_except "$STATUS_POPUP_ANCHOR") --set $STATUS_POPUP_ANCHOR popup.drawing=toggle; $PLUGIN_DIR/status_detail.sh &"
+  status_args=(
+    --add event bluetooth_change "com.apple.bluetooth.status"
+    --add item spacer.1 right
+    --set spacer.1 width=6 icon.drawing=off label.drawing=off background.drawing=off
+  )
+  status_members=()
+
+  if [[ "$W_BATTERY" == "true" ]]; then
+    status_members+=(battery)
+    status_args+=(
+      --add item battery right
+      --set battery update_freq=20
+                    icon.padding_left=6
+                    icon.padding_right=2
+                    label.padding_right=6
+                    background.drawing=off
+                    "click_script=$status_click"
+                    popup.align=right
+                    "popup.background.color=$SURFACE0"
+                    popup.background.corner_radius=10
+                    "popup.background.border_color=$SURFACE1"
+                    popup.background.border_width=1
+                    "script=$PLUGIN_DIR/battery.sh"
+      --subscribe battery power_source_change system_woke mouse.exited.global
+    )
+  fi
+
+  if [[ "$W_VOLUME" == "true" ]]; then
+    status_members=(volume "${status_members[@]}")
+    status_args+=(
+      --add item volume right
+      --set volume update_freq=30
+                   "icon.font=$FONT:Medium:20.0"
+                   "icon.color=$BLUE"
+                   icon.padding_left=5
+                   icon.padding_right=5
+                   label.drawing=off
+                   background.drawing=off
+                   "click_script=$status_click"
+                   "script=$PLUGIN_DIR/volume.sh '$FONT' '$RED' '$BLUE'"
+      --subscribe volume volume_change bluetooth_change
+    )
+    if [[ "$STATUS_POPUP_ANCHOR" == "volume" ]]; then
+      status_args+=(
+        --set volume popup.align=right
+                     "popup.background.color=$SURFACE0"
+                     popup.background.corner_radius=10
+                     "popup.background.border_color=$SURFACE1"
+                     popup.background.border_width=1
+        --subscribe volume mouse.exited.global
+      )
+    fi
+  fi
+
+  status_args+=(
+    --add item status.volume "popup.$STATUS_POPUP_ANCHOR"
+    --set status.volume icon="󰕾"
+                        "icon.font=$FONT:Medium:15.0"
+                        "icon.color=$BLUE"
+                        icon.padding_left=8
+                        icon.padding_right=6
+                        "label.font=$FONT:Medium:12.0"
+                        "label.color=$TEXT"
+                        label.padding_right=8
+                        label="Volume"
+                        background.drawing=off
+    --add item status.battery "popup.$STATUS_POPUP_ANCHOR"
+    --set status.battery icon="󰁹"
+                         "icon.font=$FONT:Medium:15.0"
+                         "icon.color=$GREEN"
+                         icon.padding_left=8
+                         icon.padding_right=6
+                         "label.font=$FONT:Medium:12.0"
+                         "label.color=$TEXT"
+                         label.padding_right=8
+                         label="Battery"
+                         background.drawing=off
+    --add bracket status_bracket "${status_members[@]}"
+    --set status_bracket "background.color=$SURFACE0" background.corner_radius=5 background.height=26
+  )
+  sketchybar "${status_args[@]}"
+fi
+
+if [[ "$W_CPU_RAM" == "true" ]]; then
+  sketchybar --add item spacer.cpu_right right \
+             --set spacer.cpu_right width=6 icon.drawing=off label.drawing=off background.drawing=off \
+             --add item cpu_label right \
+             --set cpu_label label.font="$FONT:Bold:7.0" \
+                             label.color="$SUBTEXT" \
+                             label="CPU" \
+                             label.padding_right=8 \
+                             y_offset=7 \
+                             width=0 \
+                             background.drawing=off \
+             --add item cpu_percent right \
+             --set cpu_percent label.font="$FONT:Heavy:10.0" \
+                               label.color="$TEXT" \
+                               label.padding_left=4 \
+                               label.padding_right=8 \
+                               y_offset=-4 \
+                               icon.drawing=off \
+                               update_freq=2 \
+                               background.drawing=off \
+                               script="$PLUGIN_DIR/cpu.sh" \
+             --add item ram_label right \
+             --set ram_label label.font="$FONT:Bold:7.0" \
+                             label.color="$SUBTEXT" \
+                             label="RAM" \
+                             label.padding_right=8 \
+                             y_offset=7 \
+                             width=0 \
+                             background.drawing=off \
+             --add item ram_percent right \
+             --set ram_percent label.font="$FONT:Heavy:10.0" \
+                               label.color="$TEXT" \
+                               label.padding_left=8 \
+                               label.padding_right=4 \
+                               y_offset=-4 \
+                               icon.drawing=off \
+                               update_freq=5 \
+                               background.drawing=off \
+                               script="$PLUGIN_DIR/ram.sh" \
+             --add bracket cpu_bracket cpu_label cpu_percent ram_label ram_percent \
+             --set cpu_bracket background.color="$SURFACE0" background.corner_radius=5 background.height=26
+fi
+
+# ===== Pinned apps group =====
+add_pinned_app() {
+  local item="$1" icon="$2" app_name="$3"
+  sketchybar --add item "$item" right \
+             --set "$item" icon="$icon" \
+                           icon.font="$FONT:Bold:18.0" \
+                           icon.padding_left=6 \
+                           icon.padding_right=2 \
+                           label.font="$FONT:Bold:11.0" \
+                           label.padding_left=0 \
+                           label.padding_right=6 \
+                           label.drawing=off \
+                           background.drawing=off \
+                           click_script="$SPACESD -m app '$app_name'"
+}
+
+PAPP_ITEMS=()
+while IFS=$'\t' read -r pid papp picon; do
+  [[ -n "$pid" && -n "$papp" ]] || continue
+  if ((${#PAPP_ITEMS[@]} == 0)); then
+    sketchybar --add item spacer.2 right \
+               --set spacer.2 width=6 icon.drawing=off label.drawing=off background.drawing=off
+  fi
+  add_pinned_app "app.$pid" "$picon" "$papp"
+  PAPP_ITEMS+=("app.$pid")
+done < <(jq -r '.pinned_apps // [] | map(select(.bar == true)) | reverse | .[] | [(.id // ""), (.app // ""), (.icon // "")] | @tsv' <<<"$CFG")
+
+if ((${#PAPP_ITEMS[@]} > 0)); then
+  sketchybar --add bracket apps_bracket "${PAPP_ITEMS[@]}" \
+             --set apps_bracket background.color="$SURFACE0" background.corner_radius=5 background.height=26
+fi
+
+# ===== Todo + Theme switcher (left of notch) =====
+if [[ "$W_THEME" == "true" || ${#TODO_IDS[@]} -gt 0 ]]; then
+  sketchybar --add item spacer.notch_gap q \
+             --set spacer.notch_gap width=20 icon.drawing=off label.drawing=off background.drawing=off
+fi
+
+if [[ "$W_THEME" == "true" ]]; then
+  sketchybar --add item theme q \
+             --set theme icon="󰖔" \
+                         icon.font="$FONT:Medium:18.0" \
+                         icon.color="$MAUVE" \
+                         icon.padding_left=8 \
+                         icon.padding_right=8 \
+                         label.drawing=off \
+                         background.drawing=off \
+                         update_freq=30 \
+                         script="$PLUGIN_DIR/theme.sh '$THEME_SHORTCUT' '$MAUVE' '$YELLOW'" \
+             --subscribe theme mouse.clicked \
+             --add bracket theme_bracket theme \
+             --set theme_bracket background.color="$SURFACE0" background.corner_radius=5 background.height=26
+fi
+
+if [[ "$W_THEME" == "true" && ${#TODO_IDS[@]} -gt 0 ]]; then
+  sketchybar --add item spacer.theme_todo q \
+             --set spacer.theme_todo width=6 icon.drawing=off label.drawing=off background.drawing=off
+fi
+
+add_todo_widget() {
+  local name="$1" icon="$2" file="$3" i
+  local args=(
+    --add item "$name" q
+    --set "$name" "icon=$icon"
+                  "icon.font=$FONT:Medium:18.0"
+                  "icon.color=$GREEN"
+                  icon.padding_left=6
+                  icon.padding_right=8
+                  label.drawing=off
+                  background.drawing=off
+                  update_freq=30
+                  "click_script=$(close_popups_except "$name") --set $name popup.drawing=toggle"
+                  popup.horizontal=on
+                  popup.align=center
+                  popup.height=200
+                  "popup.background.color=$SURFACE0"
+                  popup.background.corner_radius=10
+                  "popup.background.border_color=$SURFACE1"
+                  popup.background.border_width=1
+                  "script=$PLUGIN_DIR/todo.sh '$file'"
+    --subscribe "$name" mouse.clicked mouse.exited.global
+    --add item "$name.section.doing" "popup.$name"
+    --set "$name.section.doing" icon.drawing=off label="Doing" "label.font=$FONT:Bold:11.0"
+                                "label.color=$BLUE" label.padding_left=12 label.padding_right=12
+                                width=0 align=left drawing=off background.drawing=off
+  )
+  for i in 0 1 2 3 4; do
+    args+=(--add item "$name.item.$i" "popup.$name"
+           --set "$name.item.$i" icon="󰄱" "icon.font=$FONT:Medium:12.0" "icon.color=$PEACH"
+                                 icon.padding_left=12 icon.padding_right=6
+                                 "label.font=$FONT:Medium:11.0" "label.color=$TEXT"
+                                 label.padding_right=12 label.max_chars=50 label=""
+                                 width=0 align=left drawing=off background.drawing=off)
+  done
+  args+=(
+    --add item "$name.section.todo" "popup.$name"
+    --set "$name.section.todo" icon.drawing=off label="To-do" "label.font=$FONT:Bold:11.0"
+                               "label.color=$BLUE" label.padding_left=12 label.padding_right=12
+                               width=0 align=left drawing=off background.drawing=off
+  )
+  for i in 5 6 7 8 9; do
+    args+=(--add item "$name.item.$i" "popup.$name"
+           --set "$name.item.$i" icon="󰄱" "icon.font=$FONT:Medium:12.0" "icon.color=$PEACH"
+                                 icon.padding_left=12 icon.padding_right=6
+                                 "label.font=$FONT:Medium:11.0" "label.color=$TEXT"
+                                 label.padding_right=12 label.max_chars=50 label=""
+                                 width=0 align=left drawing=off background.drawing=off)
+  done
+  args+=(
+    --add item "$name.summary" "popup.$name"
+    --set "$name.summary" icon.drawing=off label="" "label.font=$FONT:Medium:10.0"
+                          "label.color=$SUBTEXT" label.padding_left=12 label.padding_right=12
+                          width=0 align=left background.drawing=off
+    --add item "$name.popup_frame" "popup.$name"
+    --set "$name.popup_frame" width=260 icon.drawing=off label.drawing=off background.drawing=off
+  )
+  sketchybar "${args[@]}"
+}
+
+for ((i = 0; i < ${#TODO_IDS[@]}; i++)); do
+  add_todo_widget "${TODO_IDS[$i]}" "${TODO_ICONS[$i]}" "${TODO_FILES[$i]}"
+done
+
+if ((${#TODO_IDS[@]} > 0)); then
+  sketchybar --add bracket todo_bracket "${TODO_IDS[@]}" \
+             --set todo_bracket background.color="$SURFACE0" background.corner_radius=5 background.height=26
+fi
+
+# ===== Media popup widget (right of notch) =====
+if [[ "$W_MEDIA" == "true" ]]; then
+  media_script="$PLUGIN_DIR/media_ctrl.sh '$MEDIA_APP'"
+  sketchybar --add item media.spacer e \
+             --set media.spacer width=20 icon.drawing=off label.drawing=off background.drawing=off \
+             --add item media.anchor e \
+             --set media.anchor script="$media_script" \
+                                update_freq=3 \
+                                icon.drawing=off \
+                                label.font="$FONT:Bold:12.0" \
+                                label.color="$TEXT" \
+                                label.padding_left=8 \
+                                label.padding_right=8 \
+                                label.max_chars=30 \
+                                label="" \
+                                drawing=off \
+                                background.drawing=on \
+                                popup.horizontal=on \
+                                popup.align=center \
+                                popup.height=120 \
+                                popup.background.color="$SURFACE0" \
+                                popup.background.corner_radius=10 \
+                                popup.background.border_color="$SURFACE1" \
+                                popup.background.border_width=1 \
+                                click_script="$(close_popups_except media.anchor) --set media.anchor popup.drawing=toggle" \
+             --subscribe media.anchor mouse.exited.global \
+             --add item media.cover popup.media.anchor \
+             --set media.cover icon.drawing=off \
+                               label.drawing=off \
+                               padding_left=12 \
+                               padding_right=10 \
+                               background.image.scale=0.6 \
+                               background.image.drawing=on \
+                               background.drawing=on \
+                               background.color="$TRANSPARENT" \
+                               script="$media_script" \
+             --subscribe media.cover mouse.clicked \
+             --add item media.title popup.media.anchor \
+             --set media.title icon.drawing=off \
+                               label.font="$FONT:Bold:14.0" \
+                               label.color="$TEXT" \
+                               label.max_chars=14 \
+                               label="" \
+                               padding_left=0 \
+                               padding_right=0 \
+                               width=0 \
+                               y_offset=40 \
+             --add item media.artist popup.media.anchor \
+             --set media.artist icon.drawing=off \
+                                label.font="$FONT:Medium:12.0" \
+                                label.color="$SUBTEXT" \
+                                label.max_chars=16 \
+                                label="" \
+                                padding_left=0 \
+                                padding_right=0 \
+                                width=0 \
+                                y_offset=20 \
+             --add item media.album popup.media.anchor \
+             --set media.album icon.drawing=off \
+                               label.font="$FONT:Medium:10.0" \
+                               label.color="$BLUE" \
+                               label.max_chars=18 \
+                               label="" \
+                               padding_left=0 \
+                               padding_right=0 \
+                               width=0 \
+                               y_offset=3 \
+             --add item media.back popup.media.anchor \
+             --set media.back icon="󰒮" \
+                              icon.font="$FONT:Bold:28.0" \
+                              icon.color="$SUBTEXT" \
+                              icon.padding_left=5 \
+                              icon.padding_right=5 \
+                              label.drawing=off \
+                              y_offset=-35 \
+                              script="$media_script" \
+             --subscribe media.back mouse.clicked \
+             --add item media.play popup.media.anchor \
+             --set media.play icon="󰏤" \
+                              icon.font="$FONT:Bold:34.0" \
+                              icon.color="$SUBTEXT" \
+                              icon.padding_left=5 \
+                              icon.padding_right=5 \
+                              label.drawing=off \
+                              updates=on \
+                              width=160 \
+                              align=center \
+                              background.drawing=off \
+                              y_offset=-35 \
+                              script="$media_script" \
+             --subscribe media.play mouse.clicked \
+             --add item media.next popup.media.anchor \
+             --set media.next icon="󰒭" \
+                              icon.font="$FONT:Bold:28.0" \
+                              icon.color="$SUBTEXT" \
+                              icon.padding_left=5 \
+                              icon.padding_right=5 \
+                              label.drawing=off \
+                              y_offset=-35 \
+                              script="$media_script" \
+             --subscribe media.next mouse.clicked \
+             --add item media.popup_spacer popup.media.anchor \
+             --set media.popup_spacer width=5 \
+             --add bracket media.controls media.back media.play media.next \
+             --set media.controls background.drawing=off y_offset=-35
+fi
+
+# ===== Lock/Unlock Animation =====
+if [[ "$W_LOCK" == "true" ]]; then
+  sketchybar --add event lock   "com.apple.screenIsLocked" \
+             --add event unlock "com.apple.screenIsUnlocked" \
+             --add item  animator left \
+             --set animator drawing=off \
+                            updates=on \
+                            script="$PLUGIN_DIR/wake.sh '$BAR_HEIGHT' '$NOTCH_WIDTH'" \
+             --subscribe animator lock unlock
+fi
+
+sketchybar --update
+
+# spacesd owns the space items: full repaint after every bar (re)load.
+"$SPACESD" -m repaint >/dev/null 2>&1 &

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Replays the proofs in scripts/proofs against this checkout's agent VM (started if needed, stopped after
+# unless it was already running). `scripts/prove` runs them all; `scripts/prove space-focus` runs one.
+set -uo pipefail
+# shellcheck source=vm/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/vm/lib.sh"
+cd "$ROOT" || exit 1
+
+proofs=()
+if [[ $# -gt 0 ]]; then
+  for name in "$@"; do
+    f="scripts/proofs/${name%.sh}.sh"
+    [[ -f "$f" ]] || { echo "prove: no $f" >&2; exit 3; }
+    proofs+=("$f")
+  done
+else
+  proofs=(scripts/proofs/*.sh)
+fi
+
+was_running=""
+vm_running && was_running=1
+[[ -n "$was_running" ]] || scripts/agent-app.sh start || exit 1
+
+# What a proof may leave behind and a service restart keeps: its windows and the spaces it made.
+RESET='pkill -x TextEdit 2>/dev/null
+while n=$(yabai -m query --spaces | jq length) && [ "$n" -gt 2 ]; do yabai -m space --destroy "$n" || break; done
+: >~/.config/spacesd/names
+rm -f ~/.config/kuukan/config.json'
+
+out="$STATE/proofs"
+mkdir -p "$out"
+failed=0
+report=()
+for p in "${proofs[@]}"; do
+  name="$(basename "$p" .sh)"
+  log="$out/$name.log"
+  run="$(date +%H%M%S)"
+  why=""
+  { scripts/ui run "$RESET"; scripts/agent-app.sh sync; } >"$log" 2>&1 || why="the services did not restart"
+  if [[ -z "$why" ]]; then
+    bash "$p" >>"$log" 2>&1 || why="$(tail -1 "$log")"
+    shot="$(scripts/ui snap "proof-$name" 2>>"$log")" && cp "$shot" "$out/$name.png"
+    # A daemon that died during the proof leaves the bar looking fine for a while.
+    down="$(scripts/agent-app.sh status 2>&1 | sed -n 's/^ *\([a-z]*\) DOWN$/\1/p' | tr '\n' ' ')"
+    [[ -z "$down" ]] || why="${why:+$why; }not running afterwards: $down"
+  fi
+  if [[ -z "$why" ]]; then
+    report+=("PASS  $name  $out/$name.png")
+  else
+    failed=1
+    { echo; echo "service logs:"; scripts/agent-app.sh logs; } >>"$log" 2>&1
+    # Kept under the run's time too, so a failure that does not repeat can still be read after the next run.
+    cp "$log" "$out/$name-$run.log"
+    [[ ! -f "$out/$name.png" ]] || cp "$out/$name.png" "$out/$name-$run.png"
+    report+=("FAIL  $name  $why  ($out/$name-$run.png, log: $out/$name-$run.log)")
+  fi
+done
+[[ -n "$was_running" ]] || scripts/agent-app.sh stop >/dev/null
+printf '%s\n' "${report[@]}"
+exit $failed

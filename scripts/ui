@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Drives this checkout's agent VM (scripts/agent-app.sh). Everything happens inside the guest; nothing touches
+# the host's own bar, pointer or keyboard.
+set -euo pipefail
+# shellcheck source=vm/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/vm/lib.sh"
+
+usage() {
+  cat >&2 <<'EOF'
+ui snap [--bar] [name]   screenshot of the guest screen; prints the host PNG path. --bar keeps the top strip
+                         (the bar and the popups under it), which stays legible when the image is scaled down
+ui key CHORD             e.g. key alt+1 (goes through the guest's skhd)
+ui click X Y | rclick X Y | move X Y
+                         screen points, top-left origin, as in the snap. A pointer left at the top edge
+                         reveals the menu bar, as on the host: move away before a snap
+ui bar-click ITEM        click the middle of a bar item, e.g. bar-click space.3
+ui bar ARGS...           sketchybar ARGS in the guest, e.g. bar --query space.2
+ui yabai ARGS...         yabai -m ARGS, e.g. yabai query --spaces
+ui spacesd ARGS...       spacesd -m ARGS
+ui run CMD...            any shell command in the guest
+ui until [--timeout S] CMD...
+                         wait until the guest shell command succeeds (default 5 s); fails with its last output
+ui logs [SVC] [N]        the services' logs (yabai, spacesd, skhd, sketchybar), as scripts/agent-app.sh logs
+EOF
+  exit 1
+}
+
+vm_running || die "agent VM not running (scripts/agent-app.sh start)"
+
+q() { printf '%q ' "$@"; }
+env='export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin;'
+SPACESD="\$HOME/.config/kuukan/spacesd/bin/spacesd"
+
+case ${1:-} in
+  snap)
+    shift
+    bar=""
+    [[ "${1:-}" == --bar ]] && { bar=1; shift; }
+    name="${1:-snap-$(date +%H%M%S)}"
+    # 320 pt is the bar plus the tallest popup; the width is clamped to the screen.
+    guest_exec 30 <<<"screencapture -x ${bar:+-R 0,0,10000,320} \"/Volumes/My Shared Files/agent/$name.png\"" >/dev/null
+    mv "$SHARE/$name.png" "$STATE/shots/$name.png"
+    echo "$STATE/shots/$name.png"
+    ;;
+  key | click | rclick | move) guest_exec 10 <<<"$env guestinput $(q "$@")" ;;
+  bar-click)
+    [[ -n "${2:-}" ]] || usage
+    at="$(guest_exec 30 <<<"$env sketchybar --query $(q "$2")" | python3 -I -c '
+import json, sys
+try:
+    rects = json.load(sys.stdin).get("bounding_rects") or {}
+except ValueError:
+    sys.exit(1)
+r = next(iter(rects.values()), None)
+if not r or r["size"][0] <= 0:
+    sys.exit(1)
+print(round(r["origin"][0] + r["size"][0] / 2), round(r["origin"][1] + r["size"][1] / 2))')" || die "bar item $2 is not on screen"
+    # shellcheck disable=SC2086
+    guest_exec 10 <<<"$env guestinput click $at"
+    ;;
+  bar) shift; guest_exec 30 <<<"$env sketchybar $(q "$@")" ;;
+  yabai) shift; guest_exec 30 <<<"$env yabai -m $(q "$@")" ;;
+  spacesd) shift; guest_exec 30 <<<"$env $SPACESD -m $(q "$@")" ;;
+  run) shift; guest_exec 120 <<<"$env $*" ;;
+  until)
+    shift
+    timeout=5
+    [[ "${1:-}" == --timeout ]] && { timeout=$2; shift 2; }
+    [[ $# -gt 0 ]] || usage
+    # One round trip: the guest polls, so a wait costs no mailbox latency per try.
+    guest_exec $((timeout + 10)) <<EOF
+$env
+spacesd() { $SPACESD "\$@"; }
+cond() {
+$*
+}
+end=\$((SECONDS + $timeout))
+until out=\$(cond 2>&1); do
+  if [ \$SECONDS -ge \$end ]; then echo "ui: not true within ${timeout}s:" $(printf '%q' "$*"); echo "\$out"; exit 1; fi
+  sleep 0.1
+done
+EOF
+    ;;
+  logs) shift; exec "$(dirname "${BASH_SOURCE[0]}")/agent-app.sh" logs "$@" ;;
+  *) usage ;;
+esac

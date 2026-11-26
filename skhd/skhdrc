@@ -1,0 +1,47 @@
+# Generated from kuukan config — edit ~/.config/kuukan/config.json and run `make apply`.
+
+.blacklist [
+    "tart"
+]
+
+# ===== Pinned space & apps =====
+alt - g : yabai -m space --focus 1
+alt - s : ~/.config/kuukan/spacesd/bin/spacesd -m app "Slack"
+alt - d : ~/.config/kuukan/spacesd/bin/spacesd -m app "Discord"
+alt - b : ~/.config/kuukan/spacesd/bin/spacesd -m app "Beeper Desktop"
+alt - a : ~/.config/kuukan/spacesd/bin/spacesd -m app "YouTube Music"
+alt - v : ~/.config/kuukan/spacesd/bin/spacesd -m app "Obsidian"
+
+# ===== Focus spaces (syncs mirror on secondary display) =====
+alt - 1 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 2
+alt - 2 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 3
+alt - 3 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 4
+alt - 4 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 5
+alt - 5 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 6
+alt - 6 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 7
+alt - 7 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 8
+alt - 8 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 9
+alt - 9 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 10
+alt - 0 : ~/.config/kuukan/spacesd/bin/spacesd -m focus 11
+
+# ===== Move window to space (toggle: primary -> mirror) =====
+shift + alt - 1 : ~/.config/kuukan/spacesd/bin/spacesd -m send 2
+shift + alt - 2 : ~/.config/kuukan/spacesd/bin/spacesd -m send 3
+shift + alt - 3 : ~/.config/kuukan/spacesd/bin/spacesd -m send 4
+shift + alt - 4 : ~/.config/kuukan/spacesd/bin/spacesd -m send 5
+shift + alt - 5 : ~/.config/kuukan/spacesd/bin/spacesd -m send 6
+shift + alt - 6 : ~/.config/kuukan/spacesd/bin/spacesd -m send 7
+shift + alt - 7 : ~/.config/kuukan/spacesd/bin/spacesd -m send 8
+shift + alt - 8 : ~/.config/kuukan/spacesd/bin/spacesd -m send 9
+shift + alt - 9 : ~/.config/kuukan/spacesd/bin/spacesd -m send 10
+shift + alt - 0 : ~/.config/kuukan/spacesd/bin/spacesd -m send 11
+
+# ===== Windows & spaces =====
+alt - f : ~/.config/yabai/maximize.sh
+shift + alt - g : app=$(yabai -m query --windows --window | jq -r '.app'); yabai -m window --space 1; yabai -m space --focus 1; open -a "$app"
+shift + alt - h : ~/.config/kuukan/spacesd/bin/spacesd -m move left
+shift + alt - l : ~/.config/kuukan/spacesd/bin/spacesd -m move right
+alt - n : ~/.config/kuukan/spacesd/scripts/create_prompt.sh
+alt - r : ~/.config/kuukan/spacesd/scripts/rename_prompt.sh
+alt - w : ~/.config/kuukan/spacesd/bin/spacesd -m destroy
+ctrl + alt + cmd - r : yabai --restart-service

@@ -1,0 +1,71 @@
+{
+  "bar": {
+    "font": "JetBrainsMono Nerd Font",
+    "height": 39,
+    "notch_width": 200,
+    "colors": {
+      "surface0": "0xff313244",
+      "surface1": "0xff45475a",
+      "base": "0xff1e1e2e",
+      "text": "0xffcdd6f4",
+      "subtext": "0xffa6adc8",
+      "mauve": "0xffcba6f7",
+      "red": "0xfff38ba8",
+      "peach": "0xfffab387",
+      "green": "0xffa6e3a1",
+      "blue": "0xff89b4fa",
+      "yellow": "0xfff9e2af"
+    }
+  },
+  "pinned_apps": [
+    { "id": "Slack", "app": "Slack", "icon": "󰒱", "bar": true, "hotkey": "alt - s", "yabai_rule": "^Slack$" },
+    { "id": "Discord", "app": "Discord", "icon": "󰙯", "bar": true, "hotkey": "alt - d", "yabai_rule": "^Discord$" },
+    { "id": "Beeper", "app": "Beeper Desktop", "icon": "󰍩", "bar": true, "hotkey": "alt - b", "yabai_rule": "^Beeper" },
+    { "id": "Music", "app": "YouTube Music", "icon": "", "bar": false, "hotkey": "alt - a", "yabai_rule": "^YouTube Music" },
+    { "id": "Obsidian", "app": "Obsidian", "icon": "", "bar": false, "hotkey": "alt - v", "yabai_rule": "^Obsidian" },
+    { "id": "DBeaver", "app": "DBeaver", "icon": "", "bar": false, "hotkey": "", "yabai_rule": "^DBeaver" }
+  ],
+  "widgets": {
+    "clock": { "enabled": true },
+    "battery": { "enabled": true },
+    "volume": { "enabled": true },
+    "cpu_ram": { "enabled": true },
+    "theme": { "enabled": true, "shortcut": "Toggle Appearance" },
+    "media": { "enabled": true, "app": "YouTube Music" },
+    "todos": [
+      { "id": "todo.personal", "icon": "󰋜", "file": "~/Obsidian/Personal/Todos.md" },
+      { "id": "todo.work", "icon": "󰃖", "file": "~/Obsidian/Work/Todos.md" }
+    ],
+    "lock_animation": { "enabled": true }
+  },
+  "window_manager": {
+    "layout": "float",
+    "padding": 10,
+    "window_gap": 10,
+    "mouse_modifier": "alt",
+    "float_apps": [
+      "^System Settings$",
+      "^System Preferences$",
+      "^Calculator$",
+      "^Karabiner",
+      "^Archive Utility$",
+      "^Alfred$",
+      "^Activity Monitor$"
+    ]
+  },
+  "hotkeys": {
+    "blacklist": ["tart"],
+    "focus_pinned": "alt - g",
+    "send_pinned": "shift + alt - g",
+    "focus_space_mod": "alt",
+    "send_space_mod": "shift + alt",
+    "maximize": "alt - f",
+    "move_space_left": "shift + alt - h",
+    "move_space_right": "shift + alt - l",
+    "create_space": "alt - n",
+    "rename_space": "alt - r",
+    "destroy_space": "alt - w",
+    "restart_yabai": "ctrl + alt + cmd - r"
+  },
+  "session_status_file": "~/.config/claude-code-manager/session-status.json"
+}

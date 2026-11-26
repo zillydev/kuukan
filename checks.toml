@@ -1,0 +1,18 @@
+# Repo checks run by `make lint` and the pre-commit hook.
+# A correction a pattern can catch becomes a [[rule]] here instead of prose in AGENTS.md.
+packs = ["swift", "shell", "git"]
+# The live desktop runs the main checkout: the guard hook blocks edits there and pre-commit takes only squash merges.
+live_main = true
+
+[allow]
+# The VM input tool paces posted events; that delay is the requirement.
+sleeps = ["tools/guestinput.swift"]
+
+[[rule]]
+id = "proof-sleeps"
+pattern = '\bsleep\b'
+include = ["scripts/proofs/*.sh"]
+message = """
+A proof that sleeps passes or fails by timing, and the next proof copies it. Wait on the state itself:
+`scripts/ui until CMD` polls CMD in the guest and fails with its last output when it never comes true.
+"""
