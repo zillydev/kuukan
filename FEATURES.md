@@ -17,7 +17,7 @@ A macOS desktop environment built around SketchyBar (Catppuccin Mocha), yabai, s
 
 ## Apps
 
-- **Pinned apps** — configurable app buttons on the bar with Dock unread badges (default: Slack, Discord, Beeper) and hotkeys bring the app forward on space 1. Reach: click an app item or press its hotkey. Proof: scripts/proofs/bar-items.sh
+- **Pinned apps** — configurable app buttons on the bar with Dock unread badges (default: Slack, Discord, Beeper) and hotkeys bring the app forward on space 1. Reach: click an app item or press its hotkey. Proof: scripts/proofs/bar-items.sh, scripts/proofs/pinned-app.sh
 - **Window layout** — configurable layout (default floating) with gaps and a bar-sized top inset, pinned apps on space 1, alt-drag to move or resize, alt+f maximizes the focused window. Reach: alt+f, alt+drag. Proof: scripts/proofs/window-keys.sh
 
 ## Status

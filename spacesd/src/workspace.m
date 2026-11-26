@@ -1,6 +1,7 @@
 // workspace.m — NSWorkspace observers + app-name lookup (ARC).
 // Pattern: sketchybar src/workspace.m.
 #include "workspace.h"
+#include "proc.h"
 #import <AppKit/AppKit.h>
 
 static void (*g_space_changed)(void) = NULL;
@@ -83,7 +84,14 @@ bool workspace_activate_pid(pid_t pid) {
 pid_t workspace_pid_for_app(const char* name) {
   @autoreleasepool {
     NSRunningApplication* app = find_app(name);
-    return app ? app.processIdentifier : 0;
+    if (!app) return 0;
+    pid_t pid = app.processIdentifier;
+    // LaunchServices can register a launch without its pid (-1, seen with Discord on macOS 27).
+    if (pid <= 0) {
+      pid_t found = proc_pid_for_executable(app.executableURL.path.fileSystemRepresentation);
+      if (found) pid = found;
+    }
+    return pid;
   }
 }
 

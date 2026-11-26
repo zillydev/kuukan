@@ -6,6 +6,7 @@ What changed in each release, written for people using kuukan. Build-time detail
 
 ## Unreleased
 
+- A pinned app's hotkey (alt+d for Discord) brings its window forward again when macOS registers the app's launch without a process id; it used to only activate the app without switching to space 1.
 - Single user config file (`~/.config/kuukan/config.json`, overlaid on `config.default.json`) for pinned apps, hotkeys, bar widgets, todo lists, colours, and window manager settings, applied with `make apply`.
 - Portable installation (`make install`) that works from any clone path, generates `skhdrc` and the LaunchAgent plist, and removes hardcoded local paths.
 - `make try BRANCH=<branch>`, `make back` and `make deploy` put a branch on the live desktop, return to `main`, and bring the desktop up to `main` after a merge. Each restarts only what the change touches (helpers, spacesd, yabai, the bar) and works from any shell.

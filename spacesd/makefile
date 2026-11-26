@@ -2,8 +2,8 @@ CFLAGS = -std=c99 -O2 -Wall -Wextra -Werror -Wno-unused-parameter -fblocks
 FRAMEWORKS = -framework CoreFoundation -framework CoreGraphics -framework AppKit -framework Carbon \
              -F/System/Library/PrivateFrameworks -framework SkyLight
 C_SRC = src/spacesd.c src/model.c src/state.c src/render.c src/mirror.c src/actions.c \
-        src/skylight.c src/bar.c src/yabai_ipc.c src/ccm.c src/papp.c src/config.c
-TEST_SRC = tests/test.c src/model.c src/bar.c src/yabai_ipc.c src/ccm.c src/papp.c src/config.c
+        src/skylight.c src/bar.c src/yabai_ipc.c src/ccm.c src/papp.c src/config.c src/proc.c
+TEST_SRC = tests/test.c src/model.c src/bar.c src/yabai_ipc.c src/ccm.c src/papp.c src/config.c src/proc.c
 
 # A certificate-signed binary keeps its Accessibility grant across rebuilds; an ad-hoc one is keyed
 # by content hash. scripts/setup-codesign.sh creates the cert once.

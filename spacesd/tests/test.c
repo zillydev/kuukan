@@ -1,15 +1,17 @@
-// Unit tests for spacesd's pure modules: framing, JSON parsing, bar buffer, model, ccm, papp, colours.
+// Unit tests for spacesd's pure modules: framing, JSON parsing, bar buffer, model, ccm, papp, colours, proc.
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <libproc.h>
 #include "../src/bar.h"
 #include "../src/ccm.h"
 #include "../src/colors.h"
 #include "../src/config.h"
 #include "../src/model.h"
 #include "../src/papp.h"
+#include "../src/proc.h"
 #include "../src/yabai_ipc.h"
 
 static void test_yabai_frame(void) {
@@ -213,6 +215,14 @@ static void test_config(void) {
   unlink(tmpl);
 }
 
+static void test_proc(void) {
+  char self[PROC_PIDPATHINFO_MAXSIZE];
+  assert(proc_pidpath(getpid(), self, sizeof(self)) > 0);
+  assert(proc_pid_for_executable(self) == getpid());
+  assert(proc_pid_for_executable("/nonexistent/bin") == 0);
+  assert(proc_pid_for_executable("") == 0);
+}
+
 int main(void) {
   test_yabai_frame();
   test_yabai_json();
@@ -221,6 +231,7 @@ int main(void) {
   test_ccm();
   test_papp_and_colors();
   test_config();
+  test_proc();
   printf("all tests passed\n");
   return 0;
 }
