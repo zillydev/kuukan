@@ -36,7 +36,7 @@ When running multiple coding agents across parallel spaces, the top-left strip a
 - **Orange + `󰚩`** (`2 ccm`, `3 lab`) — an agent finished or is waiting on your input; hit `alt+2` or `alt+3` to jump straight in and unblock it.
 - **Mauve** (`4 kuukan`) — the space you are currently on (turns green fill if an agent is actively running on it).
 
-`spacesd` watches `session_status_file` via `kqueue` (zero polling) and maps each session's window ID to its space in under 50 ms — usable with `claude-code-manager` or any script that writes the tiny JSON status format below.
+`spacesd` watches `session_status_file` via `kqueue` (zero polling) and maps each session's window ID to its space in under 50 ms — usable with [claude-code-manager](https://github.com/zillydev/claude-code-manager) or any script that writes the tiny JSON status format below.
 
 ### 4. Space 1 as a pinned "home base" for ambient apps
 
